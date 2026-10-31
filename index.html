@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vườn Thông Minh — Bảng Điều Khiển</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="min-h-screen bg-gray-100 text-gray-800 font-sans">
+  <div class="min-h-screen lg:flex">
+    <aside class="lg:w-64 bg-white border-r border-gray-200 flex flex-col justify-between">
+      <div class="p-6">
+        <div class="flex items-center gap-3 mb-8">
+          <i class="fa-solid fa-leaf text-2xl text-emerald-600"></i>
+          <div><h1 class="font-bold text-lg text-emerald-900">Vườn Thông Minh</h1><p class="text-xs text-gray-500">ESP32 + Firebase RTDB</p></div>
+        </div>
+        <div class="rounded-xl bg-gray-50 p-4 text-sm">
+          <div class="flex items-center gap-2"><span id="firebaseDot" class="w-2.5 h-2.5 rounded-full bg-gray-400"></span><span id="firebaseStatus">Đang kiểm tra Firebase...</span></div>
+          <p class="mt-2 text-xs text-gray-500" id="espStatus">Chưa có trạng thái ESP32</p>
+        </div>
+      </div>
+      <div class="p-4 border-t border-gray-100 text-xs text-gray-500">Đồ án Vườn Thông Minh</div>
+    </aside>
+
+    <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <div><h2 class="text-2xl font-bold">Tổng quan hệ thống</h2><p class="text-sm text-gray-500 mt-1">Theo dõi cảm biến và điều khiển tưới cây</p></div>
+        <span id="timeUpdated" class="text-xs text-gray-500">Cập nhật lúc: --</span>
+      </div>
+
+      <div id="alertBox" class="hidden mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl flex items-start gap-3" role="status" aria-live="polite">
+        <i class="fa-solid fa-triangle-exclamation text-amber-500 text-xl mt-0.5"></i><span id="alertMsg">Chưa nhận được dữ liệu.</span>
+      </div>
+      <div id="errorBox" class="hidden mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl" role="alert"></div>
+
+      <section class="mb-8">
+        <h3 class="font-bold text-gray-700 mb-4">Chỉ số cảm biến</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <article class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4"><div class="p-4 bg-orange-50 text-orange-500 rounded-xl"><i class="fa-solid fa-temperature-half text-2xl"></i></div><div><p class="text-sm text-gray-500">Nhiệt độ</p><p class="text-3xl font-bold" id="valNhietDo">-- °C</p></div></article>
+          <article class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4"><div class="p-4 bg-blue-50 text-blue-500 rounded-xl"><i class="fa-solid fa-droplet text-2xl"></i></div><div><p class="text-sm text-gray-500">Độ ẩm không khí</p><p class="text-3xl font-bold" id="valDoAmKK">-- %</p></div></article>
+          <article class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4"><div class="p-4 bg-emerald-50 text-emerald-600 rounded-xl"><i class="fa-solid fa-seedling text-2xl"></i></div><div><p class="text-sm text-gray-500">Độ ẩm đất</p><p class="text-3xl font-bold" id="valDoAmDat">-- %</p><p class="text-xs text-gray-400 mt-1" id="soilRaw">ADC: --</p></div></article>
+        </div>
+      </section>
+
+      <section class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+        <article class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <h3 class="font-bold text-gray-700 mb-4 flex items-center gap-2"><i class="fa-solid fa-sliders text-emerald-600"></i> Điều khiển bơm</h3>
+          <div class="flex items-center justify-between gap-4 mb-5 p-4 bg-gray-50 rounded-xl"><div><p class="font-medium">Chế độ hoạt động</p><p class="text-xs text-gray-500">Auto / Manual</p></div><select id="selectCheDo" class="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"><option value="auto">Tự động (Auto)</option><option value="manual">Thủ công (Manual)</option></select></div>
+          <div class="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-xl"><div class="flex items-center gap-3"><i id="iconBom" class="fa-solid fa-faucet-drip text-2xl text-gray-400"></i><div><p class="font-medium">Máy bơm nước</p><p id="txtTrangThaiBom" class="text-sm text-gray-500">Đang tắt</p><p id="txtLenhBom" class="text-xs text-gray-400 mt-1">Lệnh: --</p></div></div><button id="btnBom" class="px-4 py-2.5 rounded-xl font-semibold bg-gray-200 text-gray-400 cursor-not-allowed" disabled>Bật bơm</button></div>
+          <p class="text-xs text-gray-500 mt-4">Nút bơm chỉ hoạt động ở chế độ Manual. Firmware vẫn tự tắt bơm khi hết thời gian tưới hoặc phát hiện lỗi cảm biến đất.</p>
+          <div id="manualWarning" class="hidden mt-3 rounded-lg bg-amber-50 text-amber-800 text-sm p-3"></div>
+        </article>
+
+        <article class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+          <h3 class="font-bold text-gray-700 mb-4 flex items-center gap-2"><i class="fa-solid fa-gear text-emerald-600"></i> Cài đặt tưới tự động</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label for="inputNguong" class="block text-sm font-medium text-gray-600 mb-1">Ngưỡng bật bơm (%)</label><input type="number" min="0" max="99" id="inputNguong" class="w-full px-4 py-2 border border-gray-300 rounded-xl" placeholder="35"></div>
+            <div><label for="inputNguongTat" class="block text-sm font-medium text-gray-600 mb-1">Ngưỡng tắt bơm (%)</label><input type="number" min="1" max="100" id="inputNguongTat" class="w-full px-4 py-2 border border-gray-300 rounded-xl" placeholder="60"></div>
+            <div class="sm:col-span-2"><label for="inputThoiGian" class="block text-sm font-medium text-gray-600 mb-1">Thời gian tưới tối đa mỗi lần (giây)</label><input type="number" min="1" max="300" id="inputThoiGian" class="w-full px-4 py-2 border border-gray-300 rounded-xl" placeholder="10"></div>
+          </div>
+          <button id="btnLuu" class="w-full mt-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl">Lưu cấu hình</button>
+          <p class="text-xs text-gray-500 mt-3">Ngưỡng tắt phải lớn hơn ngưỡng bật để tránh bơm đóng/ngắt liên tục. Thời gian hợp lệ: 1–300 giây.</p>
+        </article>
+      </section>
+
+      <section class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4"><h3 class="font-bold text-gray-700"><i class="fa-solid fa-chart-line text-emerald-600 mr-2"></i>Lịch sử cảm biến gần đây</h3><span class="text-xs text-gray-500">Firmware lưu tối đa 100 mẫu, mỗi 60 giây</span></div>
+        <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-gray-600 text-xs uppercase"><tr><th class="p-3">Thời gian</th><th class="p-3">Nhiệt độ</th><th class="p-3">Ẩm không khí</th><th class="p-3">Ẩm đất</th></tr></thead><tbody id="tableHistory"><tr><td colspan="4" class="p-3 text-center text-gray-400">Chưa có dữ liệu lịch sử</td></tr></tbody></table></div>
+      </section>
+
+      <section class="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+        <h3 class="font-bold text-gray-700 mb-4"><i class="fa-solid fa-clock-rotate-left text-emerald-600 mr-2"></i>Nhật ký hoạt động gần đây</h3>
+        <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-gray-600 text-xs uppercase"><tr><th class="p-3">Thời gian</th><th class="p-3">Thiết bị</th><th class="p-3">Hành động</th><th class="p-3">Lý do</th></tr></thead><tbody id="tableNhatKy"><tr><td colspan="4" class="p-3 text-center text-gray-400">Chưa có nhật ký</td></tr></tbody></table></div>
+      </section>
+      <p class="text-xs text-gray-400 mt-6">Nếu dữ liệu không tải được, kiểm tra Firebase Realtime Database Rules, URL database, Wi-Fi và Serial Monitor của ESP32.</p>
+    </main>
+  </div>
+
+<script>
+  // Dùng cấu hình Firebase.
+  const firebaseConfig = {
+    apiKey: "AIsaSyBGv8m23SvweZF7z6yVV470m7aq9Q6xvJU",
+    authDomain: "vuonthongminh-bfabc.firebaseapp.com",
+    databaseURL: "https://vuonthongminh-bfabc-default-rtdb.firebaseio.com",
+    projectId: "vuonthongminh-bfabc",
+    storageBucket: "vuonthongminh-bfabc.firebasestorage.app",
+    messagingSenderId: "268856392174",
+    appId: "1:268856392174:web:28506402e1bc866ba1f6ff",
+    measurementId: "G-C5YF3SN17N"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const $ = id => document.getElementById(id);
+  let currentConfig = {};
+  let currentState = {};
+  let lastDataReceivedAt = 0;
+  let latestData = null;
+  let firebaseConnected = false;
+  let isSaving = false;
+
+  function showError(message) {
+    $('errorBox').textContent = message;
+    $('errorBox').classList.remove('hidden');
+  }
+  function clearError() { $('errorBox').textContent = ''; $('errorBox').classList.add('hidden'); }
+  function formatTime(seconds) {
+    if (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0) return 'Chưa đồng bộ NTP';
+    return new Date(Number(seconds) * 1000).toLocaleString('vi-VN');
+  }
+  function setText(id, value) { $(id).textContent = value; }
+
+  db.ref('.info/connected').on('value', snap => {
+    firebaseConnected = snap.val() === true;
+    $('firebaseDot').className = 'w-2.5 h-2.5 rounded-full ' + (firebaseConnected ? 'bg-emerald-500' : 'bg-rose-500');
+    setText('firebaseStatus', firebaseConnected ? 'Đã kết nối Firebase' : 'Mất kết nối Firebase');
+    if (!firebaseConnected) showError('Dashboard đang mất kết nối Firebase. Kiểm tra mạng hoặc quyền truy cập RTDB.');
+    else clearError();
+  });
+
+  db.ref('/vuonthongminh/data').on('value', snapshot => {
+    const data = snapshot.val();
+    if (!data) {
+      latestData = null;
+      setText('valNhietDo', '-- °C'); setText('valDoAmKK', '-- %'); setText('valDoAmDat', '-- %'); setText('soilRaw', 'ADC: --');
+      updateFreshness();
+      return;
+    }
+    latestData = data;
+    lastDataReceivedAt = Date.now();
+    setText('valNhietDo', data.dhtHopLe === false || !Number.isFinite(Number(data.nhietDo)) ? '-- °C' : Number(data.nhietDo).toFixed(1) + ' °C');
+    setText('valDoAmKK', data.dhtHopLe === false || !Number.isFinite(Number(data.doAmKhongKhi)) ? '-- %' : Number(data.doAmKhongKhi).toFixed(1) + ' %');
+    setText('valDoAmDat', data.camBienDatHopLe === false ? 'Lỗi cảm biến' : (Number.isFinite(Number(data.doAmDat)) ? Math.round(Number(data.doAmDat)) + ' %' : '-- %'));
+    setText('soilRaw', 'ADC: ' + (data.soilRaw ?? '--'));
+    setText('timeUpdated', 'Cập nhật lúc: ' + formatTime(data.capNhatLuc));
+    updateFreshness();
+  }, error => showError('Không đọc được dữ liệu cảm biến: ' + error.message));
+
+  db.ref('/vuonthongminh/config').on('value', snapshot => {
+    currentConfig = snapshot.val() || {};
+    $('selectCheDo').value = currentConfig.cheDo === 'manual' ? 'manual' : 'auto';
+    $('inputNguong').value = currentConfig.nguongDoAmDat ?? 35;
+    $('inputNguongTat').value = currentConfig.nguongDungTuoiDat ?? 60;
+    $('inputThoiGian').value = currentConfig.thoiGianTuoiGiay ?? 10;
+    updatePumpControls();
+  }, error => showError('Không đọc được cấu hình: ' + error.message));
+
+  db.ref('/vuonthongminh/state').on('value', snapshot => {
+    currentState = snapshot.val() || {};
+    const isRunning = currentState.bom === true;
+    setText('txtTrangThaiBom', isRunning ? 'Đang bật tưới...' : (currentState.camBienDatHopLe === false ? 'Đang tắt — kiểm tra cảm biến đất' : 'Đang tắt'));
+    $('txtTrangThaiBom').className = 'text-sm ' + (isRunning ? 'text-emerald-600 font-bold' : 'text-gray-500');
+    $('iconBom').className = 'fa-solid fa-faucet-drip text-2xl ' + (isRunning ? 'text-emerald-500 animate-pulse' : 'text-gray-400');
+    $('manualWarning').classList.toggle('hidden', currentState.manualTimedOut !== true);
+    if (currentState.manualTimedOut === true) setText('manualWarning', 'Bơm đã dừng do hết thời gian an toàn hoặc lỗi cảm biến. Kiểm tra hệ thống trước khi bật lại.');
+    updatePumpControls();
+  }, error => showError('Không đọc được trạng thái bơm: ' + error.message));
+
+  db.ref('/vuonthongminh/nhatky').orderByChild('thoiGian').limitToLast(10).on('value', snapshot => {
+    const items = [];
+    snapshot.forEach(child => items.push(child.val() || {}));
+    items.sort((a, b) => Number(b.thoiGian || 0) - Number(a.thoiGian || 0));
+    const tbody = $('tableNhatKy'); tbody.replaceChildren();
+    if (!items.length) { addEmptyRow(tbody, 4, 'Chưa có nhật ký'); return; }
+    for (const item of items) {
+      const tr = document.createElement('tr'); tr.className = 'border-b border-gray-100';
+      appendCell(tr, formatTime(item.thoiGian)); appendCell(tr, item.thietBi || 'bơm');
+      appendCell(tr, item.hanhDong === 'bat' ? 'BẬT' : 'TẮT'); appendCell(tr, item.lyDo || '--'); tbody.appendChild(tr);
+    }
+  }, error => showError('Không đọc được nhật ký: ' + error.message));
+
+  db.ref('/vuonthongminh/history').on('value', snapshot => {
+    const items = [];
+    snapshot.forEach(child => { const item = child.val(); if (item && typeof item === 'object') items.push(item); });
+    items.sort((a, b) => Number(b.capNhatLuc || 0) - Number(a.capNhatLuc || 0));
+    const tbody = $('tableHistory'); tbody.replaceChildren();
+    if (!items.length) { addEmptyRow(tbody, 4, 'Chưa có dữ liệu lịch sử'); return; }
+    for (const item of items.slice(0, 10)) {
+      const tr = document.createElement('tr'); tr.className = 'border-b border-gray-100';
+      appendCell(tr, formatTime(item.capNhatLuc));
+      appendCell(tr, item.dhtHopLe === false || !Number.isFinite(Number(item.nhietDo)) ? '--' : Number(item.nhietDo).toFixed(1) + ' °C');
+      appendCell(tr, item.dhtHopLe === false || !Number.isFinite(Number(item.doAmKhongKhi)) ? '--' : Number(item.doAmKhongKhi).toFixed(1) + ' %');
+      appendCell(tr, item.camBienDatHopLe === false ? 'Lỗi' : (Number.isFinite(Number(item.doAmDat)) ? Math.round(Number(item.doAmDat)) + ' %' : '--'));
+      tbody.appendChild(tr);
+    }
+  }, error => showError('Không đọc được lịch sử cảm biến: ' + error.message));
+
+  function appendCell(row, value) {
+    const td = document.createElement('td'); td.className = 'p-3'; td.textContent = String(value); row.appendChild(td);
+  }
+  function addEmptyRow(tbody, cols, text) {
+    const tr = document.createElement('tr'); const td = document.createElement('td');
+    td.colSpan = cols; td.className = 'p-3 text-center text-gray-400'; td.textContent = text; tr.appendChild(td); tbody.appendChild(tr);
+  }
+  function updateFreshness() {
+    const alertBox = $('alertBox');
+    if (!firebaseConnected) { alertBox.classList.remove('hidden'); setText('alertMsg', 'Dashboard không kết nối được Firebase.'); return; }
+    if (!latestData) { alertBox.classList.remove('hidden'); setText('alertMsg', 'Chưa nhận được dữ liệu từ ESP32. Kiểm tra nguồn, Wi-Fi và quyền RTDB.'); return; }
+    const stamp = Number(latestData.capNhatLuc || 0);
+    const ageMs = stamp > 0 ? Date.now() - stamp * 1000 : Date.now() - lastDataReceivedAt;
+    if (ageMs > 120000) {
+      alertBox.classList.remove('hidden');
+      setText('alertMsg', 'Dữ liệu ESP32 đã cũ hơn 2 phút. Kiểm tra nguồn điện, Wi-Fi hoặc firmware.');
+    } else {
+      alertBox.classList.add('hidden');
+    }
+    if (stamp <= 0 && latestData) setText('timeUpdated', 'Dữ liệu nhận được; ESP32 chưa đồng bộ NTP');
+  }
+  setInterval(updateFreshness, 5000);
+
+  function updatePumpControls() {
+    const isManual = currentConfig.cheDo === 'manual';
+    const isCommandOn = currentConfig.lenhBom === true;
+    const isRunning = currentState.bom === true;
+    $('btnBom').disabled = !isManual || !firebaseConnected;
+    if (!isManual || !firebaseConnected) {
+      $('btnBom').textContent = !isManual ? 'Đang ở Auto' : 'Mất kết nối';
+      $('btnBom').className = 'px-4 py-2.5 rounded-xl font-semibold bg-gray-200 text-gray-400 cursor-not-allowed';
+    } else {
+      $('btnBom').textContent = isCommandOn ? 'Gửi lệnh tắt' : 'Bật bơm';
+      $('btnBom').className = 'px-4 py-2.5 rounded-xl font-semibold text-white ' + (isCommandOn ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-600 hover:bg-emerald-700');
+    }
+    setText('txtLenhBom', 'Lệnh thủ công: ' + (isCommandOn ? 'BẬT' : 'TẮT') + (isRunning ? ' • Bơm đang chạy' : ''));
+  }
+
+  $('selectCheDo').addEventListener('change', async () => {
+    const value = $('selectCheDo').value;
+    try {
+      await db.ref('/vuonthongminh/config').update({ cheDo: value, ...(value === 'auto' ? { lenhBom: false } : {}) });
+      clearError();
+    } catch (error) {
+      showError('Không đổi được chế độ: ' + error.message);
+      $('selectCheDo').value = currentConfig.cheDo || 'auto';
+    }
+  });
+
+  $('btnBom').addEventListener('click', async () => {
+    if (currentConfig.cheDo !== 'manual' || !firebaseConnected) return;
+    const next = currentConfig.lenhBom !== true;
+    $('btnBom').disabled = true;
+    try {
+      await db.ref('/vuonthongminh/config/lenhBom').set(next);
+      clearError();
+    } catch (error) { showError('Không gửi được lệnh bơm: ' + error.message); }
+    finally { updatePumpControls(); }
+  });
+
+  $('btnLuu').addEventListener('click', async () => {
+    const nguongBat = Number($('inputNguong').value);
+    const nguongTat = Number($('inputNguongTat').value);
+    const thoiGian = Number($('inputThoiGian').value);
+    if (!Number.isInteger(nguongBat) || nguongBat < 0 || nguongBat > 99) return alert('Ngưỡng bật phải là số nguyên từ 0 đến 99%.');
+    if (!Number.isInteger(nguongTat) || nguongTat < 1 || nguongTat > 100) return alert('Ngưỡng tắt phải là số nguyên từ 1 đến 100%.');
+    if (nguongTat <= nguongBat) return alert('Ngưỡng tắt phải lớn hơn ngưỡng bật.');
+    if (!Number.isInteger(thoiGian) || thoiGian < 1 || thoiGian > 300) return alert('Thời gian tưới phải từ 1 đến 300 giây.');
+    if (isSaving) return;
+    isSaving = true; $('btnLuu').disabled = true; $('btnLuu').textContent = 'Đang lưu...';
+    try {
+      await db.ref('/vuonthongminh/config').update({ nguongDoAmDat: nguongBat, nguongDungTuoiDat: nguongTat, thoiGianTuoiGiay: thoiGian });
+      clearError(); alert('Đã lưu cấu hình.');
+    } catch (error) { showError('Không lưu được cấu hình: ' + error.message); }
+    finally { isSaving = false; $('btnLuu').disabled = false; $('btnLuu').textContent = 'Lưu cấu hình'; }
+  });
+</script>
+</body>
+</html>
